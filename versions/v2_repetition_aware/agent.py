@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Hashable
 
 import chess
 
 PositionKey = tuple[str, str, str, str]
-SearchKey = tuple[Hashable, chess.Color, int, int, int, bool]
 
 PIECE_VALUES = {
     chess.PAWN: 100,
@@ -104,12 +102,10 @@ MAX_QUIESCENCE_DEPTH = 8
 REPETITION_AVOIDANCE_MIN_SCORE = 100
 REVISIT_COST = 25
 THREEFOLD_RISK_COST = 200
-TRANSPOSITION_TABLE_SIZE = 20_000
 
 _deadline = 0.0
 _nodes = 0
 _position_counts: dict[PositionKey, int] = {}
-_transposition_table: dict[SearchKey, int] = {}
 
 
 class SearchTimeout(Exception):
@@ -170,24 +166,6 @@ def _is_draw(board: chess.Board) -> bool:
     return board.is_insufficient_material() or board.halfmove_clock >= 100
 
 
-def _search_key(board: chess.Board, depth: int, ply: int, quiescence: bool) -> SearchKey:
-    """Build a cache key for one exact normal or quiescence search."""
-    return (
-        board._transposition_key(),
-        board.turn,
-        board.halfmove_clock,
-        depth,
-        ply,
-        quiescence,
-    )
-
-
-def _cache_exact(key: SearchKey, score: int) -> None:
-    """Store an exact score while keeping per-move cache memory bounded."""
-    if len(_transposition_table) < TRANSPOSITION_TABLE_SIZE:
-        _transposition_table[key] = score
-
-
 def _position_key(board: chess.Board) -> PositionKey:
     """Return the parts of FEN that determine whether positions repeat."""
     placement, turn, castling, en_passant, _, _ = board.fen(en_passant="legal").split()
@@ -230,16 +208,8 @@ def _quiescence(
 ) -> int:
     """Continue unstable capture sequences before evaluating a leaf."""
     _check_time()
-    remaining_depth = MAX_QUIESCENCE_DEPTH - depth
-    cache_key = _search_key(board, remaining_depth, ply, quiescence=True)
-    cached_score = _transposition_table.get(cache_key)
-    if cached_score is not None:
-        return cached_score
-
-    original_alpha = alpha
 
     if _is_draw(board):
-        _cache_exact(cache_key, 0)
         return 0
 
     in_check = board.is_check()
@@ -249,8 +219,6 @@ def _quiescence(
             return beta
         alpha = max(alpha, stand_pat)
         if depth >= MAX_QUIESCENCE_DEPTH:
-            if original_alpha < alpha < beta:
-                _cache_exact(cache_key, alpha)
             return alpha
 
     # All evasions must be searched in check; otherwise only tactical moves can
@@ -270,27 +238,16 @@ def _quiescence(
         if score >= beta:
             return beta
         alpha = max(alpha, score)
-    if original_alpha < alpha < beta:
-        _cache_exact(cache_key, alpha)
     return alpha
 
 
 def _negamax(board: chess.Board, depth: int, alpha: int, beta: int, ply: int) -> int:
     """Search a position with negamax and alpha-beta pruning."""
     _check_time()
-    cache_key = _search_key(board, depth, ply, quiescence=False)
-    cached_score = _transposition_table.get(cache_key)
-    if cached_score is not None:
-        return cached_score
-
-    original_alpha = alpha
     legal_moves = list(board.legal_moves)
     if not legal_moves:
-        score = -MATE_SCORE + ply if board.is_check() else 0
-        _cache_exact(cache_key, score)
-        return score
+        return -MATE_SCORE + ply if board.is_check() else 0
     if _is_draw(board):
-        _cache_exact(cache_key, 0)
         return 0
     if depth == 0:
         return _quiescence(board, alpha, beta, ply, 0, legal_moves)
@@ -306,9 +263,7 @@ def _negamax(board: chess.Board, depth: int, alpha: int, beta: int, ply: int) ->
         best = max(best, score)
         alpha = max(alpha, score)
         if alpha >= beta:
-            return best
-    if original_alpha < best < beta:
-        _cache_exact(cache_key, best)
+            break
     return best
 
 
@@ -367,9 +322,6 @@ def get_move(fen: str, time_left_ms: int) -> str:
     """Return a legal UCI move selected by time-limited iterative deepening."""
     global _deadline, _nodes
 
-    # Search results are useful only within this move. Clearing here bounds
-    # memory and avoids mixing scores from separate calls or game histories.
-    _transposition_table.clear()
     board = chess.Board(fen)
     _remember_position(board)
     legal_moves = list(board.legal_moves)
