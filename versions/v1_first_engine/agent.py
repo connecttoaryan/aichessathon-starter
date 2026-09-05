@@ -6,8 +6,6 @@ import time
 
 import chess
 
-PositionKey = tuple[str, str, str, str]
-
 PIECE_VALUES = {
     chess.PAWN: 100,
     chess.KNIGHT: 320,
@@ -99,13 +97,9 @@ MATE_SCORE = 1_000_000
 INFINITY = MATE_SCORE + 10_000
 MAX_DEPTH = 64
 MAX_QUIESCENCE_DEPTH = 8
-REPETITION_AVOIDANCE_MIN_SCORE = 100
-REVISIT_COST = 25
-THREEFOLD_RISK_COST = 200
 
 _deadline = 0.0
 _nodes = 0
-_position_counts: dict[PositionKey, int] = {}
 
 
 class SearchTimeout(Exception):
@@ -166,38 +160,6 @@ def _is_draw(board: chess.Board) -> bool:
     return board.is_insufficient_material() or board.halfmove_clock >= 100
 
 
-def _position_key(board: chess.Board) -> PositionKey:
-    """Return the parts of FEN that determine whether positions repeat."""
-    placement, turn, castling, en_passant, _, _ = board.fen(en_passant="legal").split()
-    return placement, turn, castling, en_passant
-
-
-def _remember_position(board: chess.Board) -> None:
-    """Record a position reached in the real game, never a search position."""
-    key = _position_key(board)
-    _position_counts[key] = _position_counts.get(key, 0) + 1
-
-
-def _tactical_moves(board: chess.Board, legal_moves: list[chess.Move]) -> list[chess.Move]:
-    """Return captures and promotions that can make a leaf tactically unstable."""
-    return [
-        move
-        for move in legal_moves
-        if board.is_capture(move) or move.promotion is not None
-    ]
-
-
-def _score_with_repetition_preference(score: int, prior_occurrences: int) -> int:
-    """Prefer fresh play when ahead, especially if a move would draw immediately."""
-    if prior_occurrences == 0 or score < REPETITION_AVOIDANCE_MIN_SCORE:
-        return score
-    if prior_occurrences >= 2:
-        return score - THREEFOLD_RISK_COST
-    if prior_occurrences == 1:
-        return score - REVISIT_COST
-    return score
-
-
 def _quiescence(
     board: chess.Board,
     alpha: int,
@@ -221,9 +183,9 @@ def _quiescence(
         if depth >= MAX_QUIESCENCE_DEPTH:
             return alpha
 
-    # All evasions must be searched in check; otherwise only tactical moves can
-    # extend the leaf, keeping quiescence bounded and affordable.
-    moves = legal_moves if in_check else _tactical_moves(board, legal_moves)
+    moves = legal_moves if in_check else [
+        move for move in legal_moves if board.is_capture(move) or move.promotion is not None
+    ]
     for move in _ordered_moves(board, moves):
         board.push(move)
         try:
@@ -271,8 +233,7 @@ def _search_root(board: chess.Board, depth: int, preferred: chess.Move) -> tuple
     """Search one complete root iteration."""
     alpha = -INFINITY
     beta = INFINITY
-    best_selection_score = -INFINITY
-    best_raw_score = -INFINITY
+    best_score = -INFINITY
     best_move = preferred
 
     moves = _ordered_moves(board, list(board.legal_moves), preferred)
@@ -281,32 +242,15 @@ def _search_root(board: chess.Board, depth: int, preferred: chess.Move) -> tuple
             raise SearchTimeout
         board.push(move)
         try:
-            prior_occurrences = _position_counts.get(_position_key(board), 0)
             score = -_negamax(board, depth - 1, -beta, -alpha, 1)
         finally:
             board.pop()
 
-        # Repetition is a preference, never a ban. When clearly ahead, accept a
-        # small evaluation cost to choose a fresh position. A materially better
-        # repeating move still wins, and no penalty applies while losing.
-        selection_score = _score_with_repetition_preference(score, prior_occurrences)
-
-        if selection_score > best_selection_score:
-            best_selection_score = selection_score
-            best_raw_score = score
+        if score > best_score:
+            best_score = score
             best_move = move
-        alpha = max(alpha, selection_score)
-    return best_raw_score, best_move
-
-
-def _record_choice(board: chess.Board, move: chess.Move) -> str:
-    """Remember the real position produced by our move and return its UCI."""
-    board.push(move)
-    try:
-        _remember_position(board)
-    finally:
-        board.pop()
-    return move.uci()
+        alpha = max(alpha, score)
+    return best_score, best_move
 
 
 def _time_budget_seconds(time_left_ms: int) -> float:
@@ -323,7 +267,6 @@ def get_move(fen: str, time_left_ms: int) -> str:
     global _deadline, _nodes
 
     board = chess.Board(fen)
-    _remember_position(board)
     legal_moves = list(board.legal_moves)
     if not legal_moves:
         return "0000"
@@ -333,7 +276,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
     best_move = legal_moves[0]
     budget = _time_budget_seconds(time_left_ms)
     if budget <= 0.0:
-        return _record_choice(board, best_move)
+        return best_move.uci()
 
     _deadline = time.perf_counter() + budget
     _nodes = 0
@@ -346,4 +289,4 @@ def get_move(fen: str, time_left_ms: int) -> str:
         if abs(score) >= MATE_SCORE - depth:
             break
 
-    return _record_choice(board, best_move)
+    return best_move.uci()
