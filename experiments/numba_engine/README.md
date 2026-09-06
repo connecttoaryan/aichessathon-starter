@@ -1,7 +1,8 @@
-# Experimental Numba bitboard foundation
+# EXPERIMENTAL Numba chess bot — NOT SUBMISSION-READY
 
-This package is a correctness-first bitboard move generator for experiments. It is not a
-submission-ready chess agent and is not integrated into `agent.py`.
+This package contains a correctness-first bitboard move generator and a separately playable
+experimental bot. It is not integrated into the stable root `agent.py`, has not passed platform
+validation, and must not be treated as the repository's submission agent.
 
 ## Contents
 
@@ -10,8 +11,13 @@ submission-ready chess agent and is not integrated into `agent.py`.
 - `bb_movegen.py` is the readable pure-Python move generator, move application code, legality
   filter, and perft reference.
 - `bb_numba.py` implements the same hot path with NumPy arrays and Numba `njit` compilation.
+- `search.py` provides bounded material negamax, alpha-beta pruning, iterative-deepening support,
+  capture quiescence, move ordering, and a fixed-size exact-checked transposition table.
+- `agent.py` exposes `get_move(fen: str, time_left_ms: int) -> str` for local harness games.
 - `verify.py` checks both implementations against fixed perft totals and, when python-chess is
   available, a bounded deterministic set of reachable positions.
+- `agent_checks.py` checks special moves, mate finding, node aborts, quiescence, and TT bounds.
+- `clock_checks.py` checks legal replies and elapsed time over clocks from 1 ms to 120 seconds.
 - `benchmark.py` measures fresh-process import/JIT time and a short legal-perft node rate.
 
 `experiments` and `experiments.numba_engine` are regular Python packages. Run their tools from
@@ -24,6 +30,8 @@ Install the repository environment once with `uv sync`, then run:
 
 ```console
 uv run python -m experiments.numba_engine.verify
+uv run python -m experiments.numba_engine.agent_checks
+uv run python -m experiments.numba_engine.clock_checks
 ```
 
 The default run checks seven standard perft positions at bounded depths in both the Python and
@@ -43,6 +51,15 @@ uv run ruff check experiments/numba_engine experiments/__init__.py
 The Numba module deliberately warms the complete compiled call graph during import. A fresh
 verification process can therefore be quiet for several seconds before printing its table.
 
+The latest local results were:
+
+- Seven of seven fixed standard perft cases passed in both implementations.
+- 100 of 100 deterministic reachable positions matched python-chess at depth 2.
+- Ordinary, promotion, castling, en-passant, two mate-in-one, one-node abort, bounded-TT, and
+  quiescence-horizon checks all passed.
+- Clock checks returned legal moves within the supplied clock at 1, 5, 25, 100, 500, 5,000, and
+  120,000 ms. The measured 1 ms reply took 0.053 ms locally.
+
 ## Benchmark
 
 Run one fresh-process benchmark from the repository root:
@@ -60,11 +77,58 @@ Local measurement on 2026-09-06:
 | Starting-position perft depth 5 | 4,865,609 nodes |
 | Timed perft | 1.220 s |
 | Perft node rate | 3,986,869 nodes/s |
+| Complete experimental-agent cold import plus JIT | 23.248 s |
 
 The count matched the expected total. These timings are local measurements, not promises about
 the competition CPU. The reported node rate is legal perft throughput; it is not search NPS and
 does not include evaluation or search overhead. Import remains below the current 90-second
 competition initialization budget locally, but the platform validation log is authoritative.
+
+## Playable-agent design
+
+`agent.py` first asks the compiled move generator for a legal move, so it always has a candidate
+before search begins. Iterative deepening replaces that candidate only after a fully completed
+iteration. If compiled search fails, it falls back to the Numba legal generator; if that also
+fails, it asks python-chess for a legal move.
+
+The search has hard limits of depth 4, ply 64, and eight quiescence plies. A per-move node budget
+is derived conservatively from 2% of the clock after a reserve, capped at 250 ms and 250,000
+nodes. Clocks too small to provide a 5 ms search allowance skip search. A soft wall-time check
+runs between iterations, while the node counter bounds every compiled recursive call.
+
+Evaluation is material only: pawn 100, knight 320, bishop 330, rook 500, queen 900. It has no
+piece-square tables, mobility, pawn structure, king safety, tempo, or draw-aware scoring.
+Quiescence searches captures and all legal evasions while in check.
+
+Move ordering is an exact-verified transposition-table move, then captures, then quiet moves. The
+direct-mapped TT has 2,048 slots, stores the complete 16-word board to reject hash collisions,
+occupies 284,672 bytes, and is newly allocated for each move. Mate scores are not cached because
+they have not been normalized for ply.
+
+## Bounded arena results
+
+Command shape:
+
+```console
+uv run python -m harness.arena --agent experiments/numba_engine --opponent baselines/<name> --games 2 --base-ms 10000 --increment-ms 100 --ply-cap 200
+```
+
+Each matchup used one game as White and one as Black. This sample is a stability smoke test, not
+a statistically meaningful strength estimate.
+
+| Opponent | Experimental White | Experimental Black | Score | Terminations | Failed terminations |
+|---|---|---|---:|---|---|
+| `baselines/random` | win | win | +2 =0 -0 | checkmate 2 | crash 0, flag 0, illegal 0, init 0 |
+| `baselines/greedy` | win | win | +2 =0 -0 | checkmate 2 | crash 0, flag 0, illegal 0, init 0 |
+| `baselines/minimax` | win | win | +2 =0 -0 | checkmate 2 | crash 0, flag 0, illegal 0, init 0 |
+| root `agent_claude.py` | not run | not run | unavailable | file absent from checkout | not applicable |
+
+The `agent_claude.py` comparison could not be run: the requested root file does not exist in this
+checkout. No substitute was created, and the untracked `opponents/` directory was not inspected
+or modified.
+
+A separate two-game low-clock smoke test against random at 100 ms + 10 ms also finished with two
+checkmate wins and zero crashes, flags, illegal moves, or init failures.
 
 ## Competition-environment behavior
 
@@ -79,17 +143,20 @@ subprocess, GPU, or multi-core behavior is used.
 
 ## Known limitations
 
-- There is no `get_move(fen, time_left_ms)` entry point.
-- There is no encoded-move-to-UCI conversion.
-- There is no search, evaluation, move ordering, quiescence, transposition table, or time
-  management.
-- There is no repetition history or complete game-result/draw handling.
+- There is no repetition history or draw-aware search scoring.
+- The material-only evaluation is strategically weak and frequently treats unrelated moves as
+  equal.
+- The Python wall clock cannot interrupt a currently executing Numba call. Safety depends on the
+  strict node, depth, ply, and quiescence limits described above.
 - FEN input is assumed to be valid and internally consistent; it is not validated before use.
 - Move generation uses fixed 256-entry buffers and copies the board array at each node. This is a
-  correctness foundation, not a final optimized engine design.
+  correctness-focused experiment, not a final optimized engine design.
 - Only orthodox chess castling is represented; Chess960 is outside this experiment's scope.
 - Local perft coverage is strong but cannot prove correctness for every legal or malformed
   position.
+- Only small local arena samples have been run, all from the standard starting position.
+- The complete experimental agent has not been tested in the competition's Linux container or
+  accepted by platform validation.
 
-Do not submit this package on its own. Complete search, evaluation, time control, UCI conversion,
-and `get_move` integration are still required before it can become an agent.
+The experimental interface is playable, but this package remains **NOT SUBMISSION-READY**. Do not
+replace the stable root `agent.py` with it based on these bounded local results.
