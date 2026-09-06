@@ -114,13 +114,14 @@ def _reference_perft(board: chess.Board, depth: int) -> int:
     return total
 
 
-def _random_positions(chess_module: object, count: int, seed: int) -> list[str]:
-    # Keep the import optional while retaining a small, deterministic corpus.
-    chess_api = chess_module
+def _random_positions(count: int, seed: int) -> list[str]:
+    # Keep python-chess optional while retaining a small, deterministic corpus.
+    import chess
+
     rng = random.Random(seed)
     positions: list[str] = []
     while len(positions) < count:
-        board = chess_api.Board()
+        board = chess.Board()
         for _ in range(80):
             if board.is_game_over():
                 break
@@ -141,7 +142,7 @@ def run_random_comparison(count: int, depth: int, seed: int) -> bool:
         return True
 
     print(f"Random comparison: {count} positions, depth {depth}, seed {seed}")
-    for index, fen in enumerate(_random_positions(chess, count, seed), start=1):
+    for index, fen in enumerate(_random_positions(count, seed), start=1):
         expected = _reference_perft(chess.Board(fen), depth)
         python_total = bb_movegen.perft(bb_core.board_from_fen(fen), depth)
         numba_total = _numba_perft(fen, depth)
