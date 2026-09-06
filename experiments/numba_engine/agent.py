@@ -101,6 +101,7 @@ def _searched_numba_move(fen: str, time_left_ms: int) -> str:
 
     started = perf_counter()
     nodes_used = 0
+    transposition_table = _search_engine.new_transposition_table()
     for depth in range(1, depth_limit + 1):
         if perf_counter() - started >= soft_seconds:
             break
@@ -113,6 +114,7 @@ def _searched_numba_move(fen: str, time_left_ms: int) -> str:
             depth,
             remaining_nodes,
             state,
+            *transposition_table,
         )
         nodes_used += int(state[_search_engine.STATE_NODES])
         if not completed:

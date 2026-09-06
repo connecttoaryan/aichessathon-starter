@@ -88,7 +88,8 @@ def check_mates() -> bool:
 def check_node_guard() -> bool:
     board = bb_numba.board_np(chess.STARTING_FEN)
     state = search.new_state()
-    _move, _score, completed = search.search_root(board, search.MAX_SEARCH_DEPTH, 1, state)
+    table = search.new_transposition_table()
+    _move, _score, completed = search.search_root(board, search.MAX_SEARCH_DEPTH, 1, state, *table)
     ok = not completed and state[search.STATE_ABORTED] == 1 and state[search.STATE_NODES] <= 1
     print(
         f"node_guard: {'PASS' if ok else 'FAIL'} "
@@ -97,8 +98,43 @@ def check_node_guard() -> bool:
     return bool(ok)
 
 
+def check_transposition_table() -> bool:
+    board = bb_numba.board_np(chess.STARTING_FEN)
+    table = search.new_transposition_table()
+    state = search.new_state()
+    move, _score, completed = search.search_root(board, 2, 50_000, state, *table)
+    legal = agent.move_to_uci(int(move)) in _python_chess_legal_moves(chess.STARTING_FEN)
+    table_bytes = sum(array.nbytes for array in table)
+    bounded = table_bytes < 300_000
+    populated = bool(np.any(table[1] >= 0))
+    ok = completed and legal and bounded and populated
+    print(
+        f"transposition_table: {'PASS' if ok else 'FAIL'} bytes={table_bytes} populated={populated}"
+    )
+    return ok
+
+
+def check_quiescence() -> bool:
+    # Qxd5 wins a rook at the nominal leaf but loses the queen to e6xd5.
+    fen = "4k3/8/4p3/3r4/2Q5/8/8/4K3 w - - 0 1"
+    board = bb_numba.board_np(fen)
+    table = search.new_transposition_table()
+    state = search.new_state()
+    move, _score, completed = search.search_root(board, 1, 50_000, state, *table)
+    chosen = agent.move_to_uci(int(move))
+    ok = completed and chosen != "c4d5" and chosen in _python_chess_legal_moves(fen)
+    print(f"quiescence_horizon: {'PASS' if ok else 'FAIL'} chosen={chosen}")
+    return ok
+
+
 def main() -> int:
-    if check_special_positions() and check_mates() and check_node_guard():
+    if (
+        check_special_positions()
+        and check_mates()
+        and check_node_guard()
+        and check_transposition_table()
+        and check_quiescence()
+    ):
         print("Agent checks: PASS")
         return 0
     print("Agent checks: FAIL")
