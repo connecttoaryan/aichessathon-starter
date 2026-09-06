@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 from importlib import import_module
 from pathlib import Path
+from time import perf_counter
 from types import ModuleType
 
 import chess
@@ -33,6 +34,12 @@ except Exception as error:  # A legal python-chess fallback is safer than an ini
 
 _FILES = "abcdefgh"
 _PROMOTIONS = " nbrq"
+
+_MAX_THINK_MS = 250.0
+_MIN_SEARCH_MS = 5.0
+_SEARCH_CLOCK_FRACTION = 0.02
+_CONSERVATIVE_NODES_PER_MS = 500
+_ABSOLUTE_NODE_LIMIT = 250_000
 
 
 def _square_name(square: int) -> str:
@@ -59,7 +66,24 @@ def _first_numba_move(fen: str) -> str:
     return move_to_uci(int(moves[0]))
 
 
-def _searched_numba_move(fen: str) -> str:
+def _search_limits(time_left_ms: int) -> tuple[int, int, float]:
+    """Return maximum depth, total nodes, and soft search seconds."""
+    remaining_ms = max(0, time_left_ms)
+    reserve_ms = max(10, min(100, remaining_ms // 10))
+    usable_ms = max(0, remaining_ms - reserve_ms)
+    think_ms = min(_MAX_THINK_MS, usable_ms * _SEARCH_CLOCK_FRACTION)
+    if think_ms < _MIN_SEARCH_MS:
+        return 0, 0, 0.0
+    node_limit = min(
+        _ABSOLUTE_NODE_LIMIT,
+        max(1, int(think_ms * _CONSERVATIVE_NODES_PER_MS)),
+    )
+    if _search_engine is None:
+        return 0, 0, 0.0
+    return int(_search_engine.MAX_SEARCH_DEPTH), node_limit, think_ms / 1_000.0
+
+
+def _searched_numba_move(fen: str, time_left_ms: int) -> str:
     if _numba_engine is None or _search_engine is None:
         raise RuntimeError("Numba search did not initialize")
 
@@ -71,14 +95,26 @@ def _searched_numba_move(fen: str) -> str:
 
     # Always retain a legal move, and only replace it after a complete iteration.
     best_move = int(legal_moves[0])
-    for depth in range(1, int(_search_engine.MAX_SEARCH_DEPTH) + 1):
+    depth_limit, total_node_limit, soft_seconds = _search_limits(time_left_ms)
+    if depth_limit == 0:
+        return move_to_uci(best_move)
+
+    started = perf_counter()
+    nodes_used = 0
+    for depth in range(1, depth_limit + 1):
+        if perf_counter() - started >= soft_seconds:
+            break
+        remaining_nodes = total_node_limit - nodes_used
+        if remaining_nodes <= 0:
+            break
         state = _search_engine.new_state()
         move, _score, completed = _search_engine.search_root(
             board,
             depth,
-            int(_search_engine.DEFAULT_NODE_LIMIT),
+            remaining_nodes,
             state,
         )
+        nodes_used += int(state[_search_engine.STATE_NODES])
         if not completed:
             break
         best_move = int(move)
@@ -95,9 +131,8 @@ def _legal_fallback(fen: str) -> str:
 
 def get_move(fen: str, time_left_ms: int) -> str:
     """Return a legal UCI move for the official agent interface."""
-    del time_left_ms  # Stage 3 will derive the node budget from the remaining clock.
     try:
-        return _searched_numba_move(fen)
+        return _searched_numba_move(fen, time_left_ms)
     except Exception as error:
         print(f"Numba search failed; using move-generator fallback: {error!r}")
         try:
