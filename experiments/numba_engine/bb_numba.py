@@ -18,16 +18,79 @@ NO_EP = 64
 # ---- tables as numpy arrays (uint64) ------------------------------------
 KNIGHT_ATT = np.array(_c.KNIGHT_ATTACKS, dtype=np.uint64)
 KING_ATT = np.array(_c.KING_ATTACKS, dtype=np.uint64)
-PAWN_ATT = np.array(_c.PAWN_ATTACKS, dtype=np.uint64)          # shape (2,64)
-RAYS = np.array(_c.RAYS, dtype=np.uint64)                       # shape (8,64)
+PAWN_ATT = np.array(_c.PAWN_ATTACKS, dtype=np.uint64)  # shape (2,64)
+RAYS = np.array(_c.RAYS, dtype=np.uint64)  # shape (8,64)
 
-DEBRUIJN = np.uint64(0x03f79d71b4cb0a89)
-INDEX64 = np.array([
-    0, 47, 1, 56, 48, 27, 2, 60, 57, 49, 41, 37, 28, 16, 3, 61,
-    54, 58, 35, 52, 50, 42, 21, 44, 38, 32, 29, 23, 17, 11, 4, 62,
-    46, 55, 26, 59, 40, 36, 15, 53, 34, 51, 20, 43, 31, 22, 10, 45,
-    25, 39, 14, 33, 19, 30, 9, 24, 13, 18, 8, 12, 7, 6, 5, 63,
-], dtype=np.int64)
+DEBRUIJN = np.uint64(0x03F79D71B4CB0A89)
+INDEX64 = np.array(
+    [
+        0,
+        47,
+        1,
+        56,
+        48,
+        27,
+        2,
+        60,
+        57,
+        49,
+        41,
+        37,
+        28,
+        16,
+        3,
+        61,
+        54,
+        58,
+        35,
+        52,
+        50,
+        42,
+        21,
+        44,
+        38,
+        32,
+        29,
+        23,
+        17,
+        11,
+        4,
+        62,
+        46,
+        55,
+        26,
+        59,
+        40,
+        36,
+        15,
+        53,
+        34,
+        51,
+        20,
+        43,
+        31,
+        22,
+        10,
+        45,
+        25,
+        39,
+        14,
+        33,
+        19,
+        30,
+        9,
+        24,
+        13,
+        18,
+        8,
+        12,
+        7,
+        6,
+        5,
+        63,
+    ],
+    dtype=np.int64,
+)
 
 # board indices
 WP, WN, WB, WR, WQ, WK = 0, 1, 2, 3, 4, 5
@@ -73,20 +136,17 @@ def ray_neg(sq, occ, d):
 
 @njit(cache=False)
 def bishop_att(sq, occ):
-    return (ray_pos(sq, occ, 2) | ray_pos(sq, occ, 3)
-            | ray_neg(sq, occ, 6) | ray_neg(sq, occ, 7))
+    return ray_pos(sq, occ, 2) | ray_pos(sq, occ, 3) | ray_neg(sq, occ, 6) | ray_neg(sq, occ, 7)
 
 
 @njit(cache=False)
 def rook_att(sq, occ):
-    return (ray_pos(sq, occ, 0) | ray_pos(sq, occ, 1)
-            | ray_neg(sq, occ, 4) | ray_neg(sq, occ, 5))
+    return ray_pos(sq, occ, 0) | ray_pos(sq, occ, 1) | ray_neg(sq, occ, 4) | ray_neg(sq, occ, 5)
 
 
 @njit(cache=False)
 def occ_side(bd, base):
-    return (bd[base] | bd[base + 1] | bd[base + 2]
-            | bd[base + 3] | bd[base + 4] | bd[base + 5])
+    return bd[base] | bd[base + 1] | bd[base + 2] | bd[base + 3] | bd[base + 4] | bd[base + 5]
 
 
 @njit(cache=False)
@@ -157,31 +217,42 @@ def gen_pseudo(bd, out):
         to_bit = ONE << np.uint64(to)
         if empty & to_bit:
             if to_bit & promo_mask:
-                out[n] = _enc(frm, to, 4, 0); n += 1
-                out[n] = _enc(frm, to, 3, 0); n += 1
-                out[n] = _enc(frm, to, 2, 0); n += 1
-                out[n] = _enc(frm, to, 1, 0); n += 1
+                out[n] = _enc(frm, to, 4, 0)
+                n += 1
+                out[n] = _enc(frm, to, 3, 0)
+                n += 1
+                out[n] = _enc(frm, to, 2, 0)
+                n += 1
+                out[n] = _enc(frm, to, 1, 0)
+                n += 1
             else:
-                out[n] = _enc(frm, to, 0, 0); n += 1
+                out[n] = _enc(frm, to, 0, 0)
+                n += 1
                 if (ONE << np.uint64(frm)) & start_mask:
                     to2 = frm + 2 * push
                     if empty & (ONE << np.uint64(to2)):
-                        out[n] = _enc(frm, to2, 0, 1); n += 1
+                        out[n] = _enc(frm, to2, 0, 1)
+                        n += 1
         caps = PAWN_ATT[pcolor, frm] & opp
         while caps:
             c = bsf(caps)
             caps &= caps - ONE
             cbit = ONE << np.uint64(c)
             if cbit & promo_mask:
-                out[n] = _enc(frm, c, 4, 0); n += 1
-                out[n] = _enc(frm, c, 3, 0); n += 1
-                out[n] = _enc(frm, c, 2, 0); n += 1
-                out[n] = _enc(frm, c, 1, 0); n += 1
+                out[n] = _enc(frm, c, 4, 0)
+                n += 1
+                out[n] = _enc(frm, c, 3, 0)
+                n += 1
+                out[n] = _enc(frm, c, 2, 0)
+                n += 1
+                out[n] = _enc(frm, c, 1, 0)
+                n += 1
             else:
-                out[n] = _enc(frm, c, 0, 0); n += 1
-        if ep != NO_EP:
-            if PAWN_ATT[pcolor, frm] & (ONE << np.uint64(ep)):
-                out[n] = _enc(frm, ep, 0, 2); n += 1
+                out[n] = _enc(frm, c, 0, 0)
+                n += 1
+        if ep != NO_EP and PAWN_ATT[pcolor, frm] & (ONE << np.uint64(ep)):
+            out[n] = _enc(frm, ep, 0, 2)
+            n += 1
 
     # Knights
     kn = bd[base + 1]
@@ -192,7 +263,8 @@ def gen_pseudo(bd, out):
         while t:
             to = bsf(t)
             t &= t - ONE
-            out[n] = _enc(frm, to, 0, 0); n += 1
+            out[n] = _enc(frm, to, 0, 0)
+            n += 1
 
     # Bishops
     bi = bd[base + 2]
@@ -203,7 +275,8 @@ def gen_pseudo(bd, out):
         while t:
             to = bsf(t)
             t &= t - ONE
-            out[n] = _enc(frm, to, 0, 0); n += 1
+            out[n] = _enc(frm, to, 0, 0)
+            n += 1
 
     # Rooks
     ro = bd[base + 3]
@@ -214,7 +287,8 @@ def gen_pseudo(bd, out):
         while t:
             to = bsf(t)
             t &= t - ONE
-            out[n] = _enc(frm, to, 0, 0); n += 1
+            out[n] = _enc(frm, to, 0, 0)
+            n += 1
 
     # Queens
     qu = bd[base + 4]
@@ -225,7 +299,8 @@ def gen_pseudo(bd, out):
         while t:
             to = bsf(t)
             t &= t - ONE
-            out[n] = _enc(frm, to, 0, 0); n += 1
+            out[n] = _enc(frm, to, 0, 0)
+            n += 1
 
     # King
     ksq = bsf(bd[base + 5])
@@ -233,28 +308,58 @@ def gen_pseudo(bd, out):
     while t:
         to = bsf(t)
         t &= t - ONE
-        out[n] = _enc(ksq, to, 0, 0); n += 1
+        out[n] = _enc(ksq, to, 0, 0)
+        n += 1
 
     # Castling
     cr = int(bd[CR])
     if white:
-        if (cr & C_WK) and (occ & ((ONE << np.uint64(5)) | (ONE << np.uint64(6)))) == 0:
-            if (not is_attacked(bd, 4, False) and not is_attacked(bd, 5, False)
-                    and not is_attacked(bd, 6, False)):
-                out[n] = _enc(4, 6, 0, 3); n += 1
-        if (cr & C_WQ) and (occ & ((ONE << np.uint64(1)) | (ONE << np.uint64(2)) | (ONE << np.uint64(3)))) == 0:
-            if (not is_attacked(bd, 4, False) and not is_attacked(bd, 3, False)
-                    and not is_attacked(bd, 2, False)):
-                out[n] = _enc(4, 2, 0, 3); n += 1
+        if (
+            (cr & C_WK)
+            and (occ & ((ONE << np.uint64(5)) | (ONE << np.uint64(6)))) == 0
+            and (
+                not is_attacked(bd, 4, False)
+                and not is_attacked(bd, 5, False)
+                and not is_attacked(bd, 6, False)
+            )
+        ):
+            out[n] = _enc(4, 6, 0, 3)
+            n += 1
+        if (
+            (cr & C_WQ)
+            and (occ & ((ONE << np.uint64(1)) | (ONE << np.uint64(2)) | (ONE << np.uint64(3)))) == 0
+            and (
+                not is_attacked(bd, 4, False)
+                and not is_attacked(bd, 3, False)
+                and not is_attacked(bd, 2, False)
+            )
+        ):
+            out[n] = _enc(4, 2, 0, 3)
+            n += 1
     else:
-        if (cr & C_BK) and (occ & ((ONE << np.uint64(61)) | (ONE << np.uint64(62)))) == 0:
-            if (not is_attacked(bd, 60, True) and not is_attacked(bd, 61, True)
-                    and not is_attacked(bd, 62, True)):
-                out[n] = _enc(60, 62, 0, 3); n += 1
-        if (cr & C_BQ) and (occ & ((ONE << np.uint64(57)) | (ONE << np.uint64(58)) | (ONE << np.uint64(59)))) == 0:
-            if (not is_attacked(bd, 60, True) and not is_attacked(bd, 59, True)
-                    and not is_attacked(bd, 58, True)):
-                out[n] = _enc(60, 58, 0, 3); n += 1
+        if (
+            (cr & C_BK)
+            and (occ & ((ONE << np.uint64(61)) | (ONE << np.uint64(62)))) == 0
+            and (
+                not is_attacked(bd, 60, True)
+                and not is_attacked(bd, 61, True)
+                and not is_attacked(bd, 62, True)
+            )
+        ):
+            out[n] = _enc(60, 62, 0, 3)
+            n += 1
+        if (
+            (cr & C_BQ)
+            and (occ & ((ONE << np.uint64(57)) | (ONE << np.uint64(58)) | (ONE << np.uint64(59))))
+            == 0
+            and (
+                not is_attacked(bd, 60, True)
+                and not is_attacked(bd, 59, True)
+                and not is_attacked(bd, 58, True)
+            )
+        ):
+            out[n] = _enc(60, 58, 0, 3)
+            n += 1
 
     return n
 
@@ -301,10 +406,10 @@ def make(bd, m):
     if flag == 2:
         if white:
             cap_sq = to - 8
-            nb[BP] ^= (ONE << np.uint64(cap_sq))
+            nb[BP] ^= ONE << np.uint64(cap_sq)
         else:
             cap_sq = to + 8
-            nb[WP] ^= (ONE << np.uint64(cap_sq))
+            nb[WP] ^= ONE << np.uint64(cap_sq)
 
     # place piece / promotion
     if promo != 0:
@@ -317,13 +422,17 @@ def make(bd, m):
     # castling rook move
     if flag == 3:
         if to == 6:
-            nb[WR] ^= (ONE << np.uint64(7)); nb[WR] |= (ONE << np.uint64(5))
+            nb[WR] ^= ONE << np.uint64(7)
+            nb[WR] |= ONE << np.uint64(5)
         elif to == 2:
-            nb[WR] ^= (ONE << np.uint64(0)); nb[WR] |= (ONE << np.uint64(3))
+            nb[WR] ^= ONE << np.uint64(0)
+            nb[WR] |= ONE << np.uint64(3)
         elif to == 62:
-            nb[BR] ^= (ONE << np.uint64(63)); nb[BR] |= (ONE << np.uint64(61))
+            nb[BR] ^= ONE << np.uint64(63)
+            nb[BR] |= ONE << np.uint64(61)
         elif to == 58:
-            nb[BR] ^= (ONE << np.uint64(56)); nb[BR] |= (ONE << np.uint64(59))
+            nb[BR] ^= ONE << np.uint64(56)
+            nb[BR] |= ONE << np.uint64(59)
 
     # castling rights
     cr = nb[CR]
@@ -391,7 +500,7 @@ def board_np(fen):
 
 # Warm up the JIT at import (paid in the init budget in the real container).
 def _warmup():
-    b = board_np('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+    b = board_np("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     perft(b, 1)
 
 

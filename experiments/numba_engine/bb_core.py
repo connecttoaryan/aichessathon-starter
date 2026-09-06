@@ -16,8 +16,6 @@ Board state is a length-16 array of unsigned 64-bit ints:
   [15]     halfmove clock
 """
 
-import numpy as np
-
 # Piece indices into the board array.
 WP, WN, WB, WR, WQ, WK = 0, 1, 2, 3, 4, 5
 BP, BN, BB, BR, BQ, BK = 6, 7, 8, 9, 10, 11
@@ -46,10 +44,8 @@ KING_ATTACKS = [0] * 64
 # Pawn attacks indexed [color][square]; color 0 = white, 1 = black.
 PAWN_ATTACKS = [[0] * 64, [0] * 64]
 
-_KNIGHT_DELTAS = [(1, 2), (2, 1), (2, -1), (1, -2),
-                  (-1, -2), (-2, -1), (-2, 1), (-1, 2)]
-_KING_DELTAS = [(1, 0), (1, 1), (0, 1), (-1, 1),
-                (-1, 0), (-1, -1), (0, -1), (1, -1)]
+_KNIGHT_DELTAS = [(1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2)]
+_KING_DELTAS = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
 
 for s in range(64):
     f, r = s & 7, s >> 3
@@ -109,6 +105,7 @@ BISHOP_DIRS = (2, 3, 6, 7)
 
 # ---- bit helpers (plain Python versions) --------------------------------
 
+
 def popcount(x):
     return bin(x).count("1")
 
@@ -128,27 +125,33 @@ def pop_lsb(x):
 
 # ---- sliding attacks via classical ray method ---------------------------
 
+
 def ray_attacks_dir(sq, occ, d):
     """Attacks along a single direction from sq, blocked by occ."""
     attacks = RAYS[d][sq]
     blockers = attacks & occ
     if blockers:
-        if d in POSITIVE_DIRS:
-            b = lsb(blockers)
-        else:
-            b = msb(blockers)
+        b = lsb(blockers) if d in POSITIVE_DIRS else msb(blockers)
         attacks ^= RAYS[d][b]
     return attacks
 
 
 def bishop_attacks(sq, occ):
-    return (ray_attacks_dir(sq, occ, 2) | ray_attacks_dir(sq, occ, 3)
-            | ray_attacks_dir(sq, occ, 6) | ray_attacks_dir(sq, occ, 7))
+    return (
+        ray_attacks_dir(sq, occ, 2)
+        | ray_attacks_dir(sq, occ, 3)
+        | ray_attacks_dir(sq, occ, 6)
+        | ray_attacks_dir(sq, occ, 7)
+    )
 
 
 def rook_attacks(sq, occ):
-    return (ray_attacks_dir(sq, occ, 0) | ray_attacks_dir(sq, occ, 1)
-            | ray_attacks_dir(sq, occ, 4) | ray_attacks_dir(sq, occ, 5))
+    return (
+        ray_attacks_dir(sq, occ, 0)
+        | ray_attacks_dir(sq, occ, 1)
+        | ray_attacks_dir(sq, occ, 4)
+        | ray_attacks_dir(sq, occ, 5)
+    )
 
 
 def queen_attacks(sq, occ):
@@ -156,6 +159,7 @@ def queen_attacks(sq, occ):
 
 
 # ---- occupancy helpers --------------------------------------------------
+
 
 def white_occ(bd):
     return bd[WP] | bd[WN] | bd[WB] | bd[WR] | bd[WQ] | bd[WK]
@@ -173,7 +177,7 @@ def is_square_attacked(bd, sq, by_white):
     """True if `sq` is attacked by the given side."""
     occ = all_occ(bd)
     if by_white:
-        if PAWN_ATTACKS[1][sq] & bd[WP]:   # black-pawn-attack pattern hits WP
+        if PAWN_ATTACKS[1][sq] & bd[WP]:  # black-pawn-attack pattern hits WP
             return True
         if KNIGHT_ATTACKS[sq] & bd[WN]:
             return True
@@ -200,8 +204,18 @@ def is_square_attacked(bd, sq, by_white):
 # ---- FEN -> board array (for testing/interfacing) -----------------------
 
 _PIECE_TO_IDX = {
-    'P': WP, 'N': WN, 'B': WB, 'R': WR, 'Q': WQ, 'K': WK,
-    'p': BP, 'n': BN, 'b': BB, 'r': BR, 'q': BQ, 'k': BK,
+    "P": WP,
+    "N": WN,
+    "B": WB,
+    "R": WR,
+    "Q": WQ,
+    "K": WK,
+    "p": BP,
+    "n": BN,
+    "b": BB,
+    "r": BR,
+    "q": BQ,
+    "k": BK,
 }
 
 
@@ -218,22 +232,22 @@ def board_from_fen(fen):
             else:
                 bd[_PIECE_TO_IDX[ch]] |= 1 << _sq(file, rank)
                 file += 1
-    bd[STM] = 0 if parts[1] == 'w' else 1
+    bd[STM] = 0 if parts[1] == "w" else 1
     cr = 0
     castle = parts[2]
-    if 'K' in castle:
+    if "K" in castle:
         cr |= C_WK
-    if 'Q' in castle:
+    if "Q" in castle:
         cr |= C_WQ
-    if 'k' in castle:
+    if "k" in castle:
         cr |= C_BK
-    if 'q' in castle:
+    if "q" in castle:
         cr |= C_BQ
     bd[CR] = cr
-    if parts[3] == '-':
+    if parts[3] == "-":
         bd[EP] = NO_EP
     else:
-        ef = ord(parts[3][0]) - ord('a')
+        ef = ord(parts[3][0]) - ord("a")
         er = int(parts[3][1]) - 1
         bd[EP] = _sq(ef, er)
     bd[HM] = int(parts[4]) if len(parts) > 4 else 0

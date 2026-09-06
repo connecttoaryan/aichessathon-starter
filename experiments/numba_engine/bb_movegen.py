@@ -8,12 +8,38 @@ Move encoding (one int):
 """
 
 from .bb_core import (
-    WP, WN, WB, WR, WQ, WK, BP, BN, BB, BR, BQ, BK,
-    STM, CR, EP, HM, NO_EP, C_WK, C_WQ, C_BK, C_BQ,
-    KNIGHT_ATTACKS, KING_ATTACKS, PAWN_ATTACKS,
-    bishop_attacks, rook_attacks, queen_attacks,
-    white_occ, black_occ, all_occ, is_square_attacked,
+    BB,
+    BK,
+    BN,
+    BP,
+    BQ,
+    BR,
+    C_BK,
+    C_BQ,
+    C_WK,
+    C_WQ,
+    CR,
+    EP,
+    HM,
+    KING_ATTACKS,
+    KNIGHT_ATTACKS,
+    NO_EP,
+    PAWN_ATTACKS,
+    STM,
+    WB,
+    WK,
+    WN,
+    WP,
+    WQ,
+    WR,
+    all_occ,
+    bishop_attacks,
+    black_occ,
+    is_square_attacked,
     lsb,
+    queen_attacks,
+    rook_attacks,
+    white_occ,
 )
 
 PROMO_PIECES = (WN, WB, WR, WQ)  # order matches promo codes 1..4 (white)
@@ -58,14 +84,14 @@ def gen_pseudo(bd):
     if white:
         pawns, knights, bishops, rooks, queens, king = WP, WN, WB, WR, WQ, WK
         push_dir = 8
-        start_rank_mask = 0x000000000000FF00   # rank 2
-        promo_rank_mask = 0xFF00000000000000    # rank 8 (destination)
+        start_rank_mask = 0x000000000000FF00  # rank 2
+        promo_rank_mask = 0xFF00000000000000  # rank 8 (destination)
         pawn_att = PAWN_ATTACKS[0]
     else:
         pawns, knights, bishops, rooks, queens, king = BP, BN, BB, BR, BQ, BK
         push_dir = -8
-        start_rank_mask = 0x00FF000000000000    # rank 7
-        promo_rank_mask = 0x00000000000000FF    # rank 1 (destination)
+        start_rank_mask = 0x00FF000000000000  # rank 7
+        promo_rank_mask = 0x00000000000000FF  # rank 1 (destination)
         pawn_att = PAWN_ATTACKS[1]
 
     # --- Pawns ---
@@ -94,9 +120,8 @@ def gen_pseudo(bd):
             else:
                 moves.append(enc(frm, to, 0, 0))
         # en passant
-        if bd[EP] != NO_EP:
-            if pawn_att[frm] & (1 << bd[EP]):
-                moves.append(enc(frm, bd[EP], 0, 2))
+        if bd[EP] != NO_EP and pawn_att[frm] & (1 << bd[EP]):
+            moves.append(enc(frm, bd[EP], 0, 2))
 
     # --- Knights ---
     for frm in _iter_bits(bd[knights]):
@@ -130,27 +155,47 @@ def gen_pseudo(bd):
     # --- Castling ---
     # Squares: white e1=4,f1=5,g1=6,d1=3,c1=2,b1=1 ; black e8=60,f8=61,g8=62,d8=59,c8=58,b8=57
     if white:
-        if (bd[CR] & C_WK) and not (occ & ((1 << 5) | (1 << 6))):
-            if (not is_square_attacked(bd, 4, False)
-                    and not is_square_attacked(bd, 5, False)
-                    and not is_square_attacked(bd, 6, False)):
-                moves.append(enc(4, 6, 0, 3))
-        if (bd[CR] & C_WQ) and not (occ & ((1 << 1) | (1 << 2) | (1 << 3))):
-            if (not is_square_attacked(bd, 4, False)
-                    and not is_square_attacked(bd, 3, False)
-                    and not is_square_attacked(bd, 2, False)):
-                moves.append(enc(4, 2, 0, 3))
+        if (
+            (bd[CR] & C_WK)
+            and not (occ & ((1 << 5) | (1 << 6)))
+            and (
+                not is_square_attacked(bd, 4, False)
+                and not is_square_attacked(bd, 5, False)
+                and not is_square_attacked(bd, 6, False)
+            )
+        ):
+            moves.append(enc(4, 6, 0, 3))
+        if (
+            (bd[CR] & C_WQ)
+            and not (occ & ((1 << 1) | (1 << 2) | (1 << 3)))
+            and (
+                not is_square_attacked(bd, 4, False)
+                and not is_square_attacked(bd, 3, False)
+                and not is_square_attacked(bd, 2, False)
+            )
+        ):
+            moves.append(enc(4, 2, 0, 3))
     else:
-        if (bd[CR] & C_BK) and not (occ & ((1 << 61) | (1 << 62))):
-            if (not is_square_attacked(bd, 60, True)
-                    and not is_square_attacked(bd, 61, True)
-                    and not is_square_attacked(bd, 62, True)):
-                moves.append(enc(60, 62, 0, 3))
-        if (bd[CR] & C_BQ) and not (occ & ((1 << 57) | (1 << 58) | (1 << 59))):
-            if (not is_square_attacked(bd, 60, True)
-                    and not is_square_attacked(bd, 59, True)
-                    and not is_square_attacked(bd, 58, True)):
-                moves.append(enc(60, 58, 0, 3))
+        if (
+            (bd[CR] & C_BK)
+            and not (occ & ((1 << 61) | (1 << 62)))
+            and (
+                not is_square_attacked(bd, 60, True)
+                and not is_square_attacked(bd, 61, True)
+                and not is_square_attacked(bd, 62, True)
+            )
+        ):
+            moves.append(enc(60, 62, 0, 3))
+        if (
+            (bd[CR] & C_BQ)
+            and not (occ & ((1 << 57) | (1 << 58) | (1 << 59)))
+            and (
+                not is_square_attacked(bd, 60, True)
+                and not is_square_attacked(bd, 59, True)
+                and not is_square_attacked(bd, 58, True)
+            )
+        ):
+            moves.append(enc(60, 58, 0, 3))
 
     return moves
 
@@ -195,10 +240,7 @@ def make(bd, m):
 
     # En-passant capture removes the pawn behind `to`.
     if flag == 2:
-        if white:
-            cap_sq = to - 8
-        else:
-            cap_sq = to + 8
+        cap_sq = to - 8 if white else to + 8
         cap_bit = 1 << cap_sq
         nb[BP if white else WP] ^= cap_bit
 
@@ -213,14 +255,18 @@ def make(bd, m):
 
     # Castling: move the rook.
     if flag == 3:
-        if to == 6:      # white kingside e1g1, rook h1->f1
-            nb[WR] ^= (1 << 7); nb[WR] |= (1 << 5)
-        elif to == 2:    # white queenside e1c1, rook a1->d1
-            nb[WR] ^= (1 << 0); nb[WR] |= (1 << 3)
-        elif to == 62:   # black kingside
-            nb[BR] ^= (1 << 63); nb[BR] |= (1 << 61)
-        elif to == 58:   # black queenside
-            nb[BR] ^= (1 << 56); nb[BR] |= (1 << 59)
+        if to == 6:  # white kingside e1g1, rook h1->f1
+            nb[WR] ^= 1 << 7
+            nb[WR] |= 1 << 5
+        elif to == 2:  # white queenside e1c1, rook a1->d1
+            nb[WR] ^= 1 << 0
+            nb[WR] |= 1 << 3
+        elif to == 62:  # black kingside
+            nb[BR] ^= 1 << 63
+            nb[BR] |= 1 << 61
+        elif to == 58:  # black queenside
+            nb[BR] ^= 1 << 56
+            nb[BR] |= 1 << 59
 
     # Update castling rights.
     cr = nb[CR]
