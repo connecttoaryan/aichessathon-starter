@@ -121,11 +121,24 @@ a statistically meaningful strength estimate.
 | `baselines/random` | win | win | +2 =0 -0 | checkmate 2 | crash 0, flag 0, illegal 0, init 0 |
 | `baselines/greedy` | win | win | +2 =0 -0 | checkmate 2 | crash 0, flag 0, illegal 0, init 0 |
 | `baselines/minimax` | win | win | +2 =0 -0 | checkmate 2 | crash 0, flag 0, illegal 0, init 0 |
-| root `agent_claude.py` | not run | not run | unavailable | file absent from checkout | not applicable |
+| `agent_claude.py` at `d764e3f` | 0-1-4 | 0-0-5 | +0 =1 -9, 5.0% | checkmate 9, threefold 1 | crash 0, flag 0, illegal 0, init 0 |
 
-The `agent_claude.py` comparison could not be run: the requested root file does not exist in this
-checkout. No substitute was created, and the untracked `opponents/` directory was not inspected
-or modified.
+The ten-game `agent_claude.py` match used the harness default 10 s + 0.1 s clock. The Numba bot
+lost games 1, 2, and 4–10 by checkmate and drew game 3 by threefold repetition. It scored 0-1-4 as
+White and 0-0-5 as Black. This is the fixed pre-evaluation benchmark for commit `e80c308`.
+
+For a reproducible teammate comparison, put the exact reference file in a temporary directory as
+`agent.py`, then run:
+
+```console
+uv run python -m harness.arena --agent experiments/numba_engine --opponent <temporary-folder-path> --games 10
+```
+
+The reference used above is
+[`agent_claude.py` at commit `d764e3f`](https://github.com/connecttoaryan/aichessathon-starter/blob/d764e3f3ed26fc12cd0082e49dcf59e89abef282/agent_claude.py).
+Future strength comparisons must also preserve the prior Numba bot from commit `e80c308` in a
+temporary folder and use the same harness command with `--games 20`. Do not compare two mutable
+working directories and call the result reproducible.
 
 A separate two-game low-clock smoke test against random at 100 ms + 10 ms also finished with two
 checkmate wins and zero crashes, flags, illegal moves, or init failures.
