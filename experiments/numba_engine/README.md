@@ -143,6 +143,35 @@ working directories and call the result reproducible.
 A separate two-game low-clock smoke test against random at 100 ms + 10 ms also finished with two
 checkmate wins and zero crashes, flags, illegal moves, or init failures.
 
+## Aborted tapered-evaluation experiment (2026-09-07)
+
+A Numba-compatible tapered evaluator was implemented locally with distinct midgame/endgame
+values and piece-square tables, phase interpolation, bishop-pair, passed/isolated/doubled-pawn,
+rook-file, mobility, and king-safety terms. Its targeted symmetry and obvious-position checks
+passed. The full seven-position perft suite, 100-position python-chess comparison, special-move
+and mate checks, node/TT/quiescence guards, and clock checks also passed. Two-game random and
+greedy smoke matches each finished 2-0 by checkmate.
+
+The change was not retained because fresh-process initialization was unreliable:
+
+- The first two-game minimax run lost both games by `init`. Removing a redundant evaluator
+  warm-up produced one checkmate win and one threefold draw on the single permitted rerun.
+- One cold agent import measured 60.631 s after that change, but another form of the evaluator
+  measured 224.817 s wall / 109.797 s CPU, beyond the 90-second contract even when judging by
+  CPU time.
+- The required 20-game comparison against prior Numba commit `e80c308` produced one genuine
+  threefold draw, followed by 19 `both_failed` initialization terminations. The harness summary
+  (`+0 =20 -0`, 50.0%) is therefore an invalid strength result: 19 nominal draws were void games.
+- A module breakdown under the same local conditions measured 66.109 CPU seconds for the
+  unchanged `bb_numba` warm-up, 6.422 for the evaluator, and 14.969 for search import. Removing
+  the verification-only perft warm-up made compilation worse (129.172 CPU seconds total), so
+  that experiment was also reverted.
+
+Per the reliability rule, the tapered evaluator was reverted completely and search-quality work
+was not started. No post-change match against `agent_claude.py` was run after this blocker. The
+engine documented in the rest of this README therefore remains the material-evaluation build at
+`e80c308`, not a stronger positional version.
+
 ## Competition-environment behavior
 
 All `njit` functions use `cache=False`. Each fresh process compiles in memory during the import
